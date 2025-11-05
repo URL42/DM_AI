@@ -1,0 +1,7 @@
+# Keep in sync with [project.dependencies] in pyproject.toml
+aiogram>=3.6.0
+python-dotenv>=1.0.1
+openai>=1.51.0
+aiosqlite>=0.20.0
+pydantic>=2.9.0
+uvicorn>=0.30.0
