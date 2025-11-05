@@ -1,0 +1,91 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+dist/
+build/
+.eggs/
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Virtual environments
+.venv/
+.uv/
+.env/
+env/
+venv/
+
+# uv cache
+.uv-cache/
+.uv-lock/
+
+# Local data / databases
+*.db
+*.sqlite
+*.sqlite3
+db.sqlite
+logs/
+cache/
+data/
+__logs__/
+
+# Config & secrets
+.env
+.env.*
+!.env.example
+config.json
+config_local.json
+secrets.json
+
+# macOS / OS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs / editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Byte-compiled / C extensions
+*.so
+
+# Test and coverage files
+htmlcov/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Reports or generated exports
+exports/
+reports/
+*.csv
+*.jsonl
+*.parquet
+*.xlsx
+*.zip
+
+# Project-specific
+dm_oracle.db
+persona_dm.json.backup
+sessions/

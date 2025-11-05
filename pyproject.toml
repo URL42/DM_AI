@@ -1,0 +1,16 @@
+[project]
+name = "dungeon-ai-bot"
+version = "0.2.0"
+description = "Telegram Dungeon AI with daily chaos ramp, ratings, group mode, and Carl-style achievements."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "aiogram>=3.6.0",
+  "python-dotenv>=1.0.1",
+  "openai>=1.51.0",
+  "aiosqlite>=0.20.0",
+  "pydantic>=2.9.0",
+  "uvicorn>=0.30.0"
+]
+
+[tool.uv]
