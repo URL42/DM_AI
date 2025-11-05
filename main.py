@@ -41,6 +41,12 @@ db = DB(DB_PATH)
 persona = load_persona("persona_dm.json")
 TZ = ZoneInfo(TIMEZONE)
 
+QUEST_FALLBACKS = [
+    "A suspicious merchant offers a map to a sunken archive guarded by silent bells.",
+    "Each dawn, footprints circle every door—yet no watcher sees the walker.",
+    "A cursed ledger predicts debts that come due in blood by the next full moon."
+]
+
 def local_day_key(ts: Optional[int] = None) -> str:
     dt = datetime.fromtimestamp(ts or time.time(), TZ)
     return dt.strftime("%Y-%m-%d")
@@ -98,6 +104,37 @@ def generate_reply(username: str, question: str, memories: list[str], chaos: flo
     ctoks = getattr(resp.usage, "completion_tokens", 0) if resp.usage else 0
     return content, ptoks, ctoks, temp
 
+def generate_quest_hook(chaos: float):
+    chaos_note = (
+        f"Quest hook request. Chaos meter {chaos:.2f} (0=restrained, 1=spicy, 1.5=absurd). "
+        "Higher chaos should lean into weirder stakes, uncanny details, or surreal NPC motives."
+    )
+    style_rules = "\n- ".join(persona["style_rules"])
+    system = (
+        f"You are {persona['name']} — {persona.get('description','')}\n"
+        f"Voice: {persona['voice']['tone']}.\n"
+        f"{chaos_note}\n\n"
+        "You are crafting a single quest hook for an adventuring party. Keep it self-contained, 1–2 sentences, vivid, and playable.\n"
+        "Do NOT reply with bullet points, Markdown headings, or explanations. Output only the quest hook text.\n"
+        f"Style influence:\n- {style_rules}"
+    )
+    user = (
+        "Deliver a brand-new quest hook that hints at a conflict, an unusual locale or relic, and a quirky constraint or twist. "
+        "Make it feel like the start of an epic side quest. Stay under 50 words."
+    )
+    resp = client.chat.completions.create(
+        model=MODEL,
+        temperature=clamp(SYSTEM_TEMPERATURE + (chaos - 0.5), 0.2, 1.5),
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
+        ]
+    )
+    content = resp.choices[0].message.content.strip().replace("\n", " ")
+    ptoks = getattr(resp.usage, "prompt_tokens", 0) if resp.usage else 0
+    ctoks = getattr(resp.usage, "completion_tokens", 0) if resp.usage else 0
+    return content, ptoks, ctoks
+
 def advice_buttons(message_row_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="👍 Wise counsel", callback_data=f"rate:{message_row_id}:up"),
@@ -133,18 +170,20 @@ async def cmd_quest(message: Message):
     day = local_day_key(now)
     await db.inc_counter(day, "quest")
 
-    seeds = [
-        "A suspicious merchant offers a map to a sunken archive guarded by silent bells.",
-        "Each dawn, footprints circle every door—yet no watcher sees the walker.",
-        "A cursed ledger predicts debts that come due in blood by the next full moon."
-    ]
-    hook = random.choice(seeds)
+    today_interactions = await get_today_interactions()
+    chaos = compute_chaos(today_interactions)
+
+    try:
+        hook, ptoks, ctoks = await asyncio.to_thread(generate_quest_hook, chaos)
+    except Exception:
+        hook = random.choice(QUEST_FALLBACKS)
+        ptoks = ctoks = 0
 
     # Store as active quest for user, and as memory for callbacks
     await db.set_last_quest(uid, now, hook)
     await db.add_memory(uid, now, f"Active quest: {hook}", importance=3)
 
-    await db.add_message(uid, now, "quest", 0, 0, chat_id=message.chat.id)
+    await db.add_message(uid, now, "quest", ptoks, ctoks, chat_id=message.chat.id)
     await message.reply(
         f"📜 *Quest Hook*\n{hook}\n\n_Use /advice to plot your approach — I’ll remember this quest._",
         parse_mode="Markdown"
