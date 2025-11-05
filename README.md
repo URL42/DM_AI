@@ -37,6 +37,17 @@ uv run python main.py
 
 The process prints `Dungeon AI Bot is listening...` once polling starts. Stop with `Ctrl+C`.
 
+## Docker
+```bash
+# Build and run (requires Docker + docker compose)
+cp .env.example .env             # fill in secrets if not done already
+docker compose up --build        # foreground
+# or run in background
+docker compose up --build -d
+```
+
+The compose stack mounts a named volume (`dm_oracle_data`) at `/data` so the SQLite database survives restarts. To stop and remove containers without deleting the volume, run `docker compose down`. Add `-v` if you want to wipe the stored data.
+
 ## Command reference
 - `/advice <dilemma>` – primary interaction; bot replies with achievement box, strategy, and snark.
 - `/quest` – generates a fresh quest hook via the LLM and stores it as active context for later advice.
