@@ -90,6 +90,14 @@ class DB:
             """, (user_id, now_ts, snippet, importance))
             await db.commit()
 
+    async def delete_memories_with_prefix(self, user_id: int, prefix: str):
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("""
+              DELETE FROM memories
+              WHERE user_id = ? AND snippet LIKE ?
+            """, (user_id, f"{prefix}%"))
+            await db.commit()
+
     async def get_top_memories(self, user_id: int, limit: int = 5) -> List[str]:
         async with aiosqlite.connect(self.path) as db:
             cur = await db.execute("""

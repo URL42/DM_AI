@@ -47,6 +47,10 @@ QUEST_FALLBACKS = [
     "A cursed ledger predicts debts that come due in blood by the next full moon."
 ]
 
+ACHIEVEMENT_BOX_RE = re.compile(
+    r"🏆\s*ACHIEVEMENT UNLOCKED:[\s\S]*?(?:Reward:[^\n]*)(?:\n|$)", re.IGNORECASE
+)
+
 def local_day_key(ts: Optional[int] = None) -> str:
     dt = datetime.fromtimestamp(ts or time.time(), TZ)
     return dt.strftime("%Y-%m-%d")
@@ -104,19 +108,26 @@ def generate_reply(username: str, question: str, memories: list[str], chaos: flo
     ctoks = getattr(resp.usage, "completion_tokens", 0) if resp.usage else 0
     return content, ptoks, ctoks, temp
 
+def clean_quest_hook(raw: str) -> str:
+    """Strip achievement boxes or trailing whitespace from quest output."""
+    cleaned = ACHIEVEMENT_BOX_RE.sub(" ", raw)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
 def generate_quest_hook(chaos: float):
     chaos_note = (
         f"Quest hook request. Chaos meter {chaos:.2f} (0=restrained, 1=spicy, 1.5=absurd). "
         "Higher chaos should lean into weirder stakes, uncanny details, or surreal NPC motives."
     )
-    style_rules = "\n- ".join(persona["style_rules"])
     system = (
         f"You are {persona['name']} — {persona.get('description','')}\n"
         f"Voice: {persona['voice']['tone']}.\n"
         f"{chaos_note}\n\n"
-        "You are crafting a single quest hook for an adventuring party. Keep it self-contained, 1–2 sentences, vivid, and playable.\n"
-        "Do NOT reply with bullet points, Markdown headings, or explanations. Output only the quest hook text.\n"
-        f"Style influence:\n- {style_rules}"
+        "Task: Craft one NEW quest hook for an adventuring party.\n"
+        "- 1–2 sentences, vivid, immediately playable.\n"
+        "- No ACHIEVEMENT boxes, no bullet points, no meta commentary.\n"
+        "- Avoid repeating recent hook themes; steer clear of egg/breakfast motifs unless explicitly requested.\n"
+        "- Output ONLY the quest hook text."
     )
     user = (
         "Deliver a brand-new quest hook that hints at a conflict, an unusual locale or relic, and a quirky constraint or twist. "
@@ -133,7 +144,7 @@ def generate_quest_hook(chaos: float):
     content = resp.choices[0].message.content.strip().replace("\n", " ")
     ptoks = getattr(resp.usage, "prompt_tokens", 0) if resp.usage else 0
     ctoks = getattr(resp.usage, "completion_tokens", 0) if resp.usage else 0
-    return content, ptoks, ctoks
+    return clean_quest_hook(content), ptoks, ctoks
 
 def advice_buttons(message_row_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
@@ -176,10 +187,15 @@ async def cmd_quest(message: Message):
     try:
         hook, ptoks, ctoks = await asyncio.to_thread(generate_quest_hook, chaos)
     except Exception:
-        hook = random.choice(QUEST_FALLBACKS)
+        hook = ""
         ptoks = ctoks = 0
 
+    if not hook:
+        hook = random.choice(QUEST_FALLBACKS)
+    hook = clean_quest_hook(hook)
+
     # Store as active quest for user, and as memory for callbacks
+    await db.delete_memories_with_prefix(uid, "Active quest:")
     await db.set_last_quest(uid, now, hook)
     await db.add_memory(uid, now, f"Active quest: {hook}", importance=3)
 
@@ -306,10 +322,13 @@ async def handle_advice(message: Message):
     user_question = parts[1].strip() if len(parts) > 1 else ""
     await db.inc_counter(day, "advice")
 
-    memories = await db.get_top_memories(uid, MAX_HISTORY)
+    memories_raw = await db.get_top_memories(uid, MAX_HISTORY)
+    memories = [cleaned for cleaned in map(clean_quest_hook, memories_raw) if cleaned]
     today_interactions = await get_today_interactions()
     chaos = compute_chaos(today_interactions)
     last_quest = await db.get_last_quest(uid)
+    if last_quest:
+        last_quest = clean_quest_hook(last_quest)
 
     if not user_question and last_quest:
         user_question = f"Strategy to tackle my current quest: {last_quest}"
