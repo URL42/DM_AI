@@ -51,6 +51,7 @@ The compose stack mounts a named volume (`dm_oracle_data`) at `/data` so the SQL
 ## Command reference
 - `/advice <dilemma>` – primary interaction; bot replies with achievement box, strategy, and snark.
 - `/quest` – generates a fresh quest hook via the LLM and stores it as active context for later advice.
+- `/stop` – clears your current quest context if you want to start over.
 - `/roll [NdM]` – dice roller with narrative flavor (supports up to 20 dice and 1000 faces).
 - `/stats` – personal interaction + token counts plus today’s chaos level.
 - `/leaderboard` – top users ranked by total interactions.

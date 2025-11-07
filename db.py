@@ -201,3 +201,8 @@ class DB:
             cur = await db.execute("SELECT value FROM user_state WHERE user_id=? AND key='last_quest'", (user_id,))
             row = await cur.fetchone()
             return row[0] if row else None
+
+    async def clear_last_quest(self, user_id: int):
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("DELETE FROM user_state WHERE user_id=? AND key='last_quest'", (user_id,))
+            await db.commit()

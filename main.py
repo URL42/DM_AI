@@ -157,6 +157,7 @@ WELCOME_TEXT = (
     "I am the Dungeon AI.\n\n"
     "• /advice <your dilemma> — snarky, useful guidance\n"
     "• /quest — a one-shot hook to spark chaos\n"
+    "• /stop — clear your current quest context\n"
     "• /roll d20 — the bones never lie\n"
     "• /stats — your usage; /leaderboard — top fools\n"
     "The more you invoke me today, the wilder I get. Dawn resets my temper."
@@ -171,6 +172,16 @@ async def cmd_start(message: Message):
 @dp.message(Command("advice"))
 async def cmd_advice(message: Message):
     await handle_advice(message)
+
+@dp.message(Command("stop"))
+async def cmd_stop(message: Message):
+    now = int(time.time())
+    uid = message.from_user.id
+    uname = message.from_user.username or "adventurer"
+    await db.upsert_user(uid, uname, now)
+    await db.delete_memories_with_prefix(uid, "Active quest:")
+    await db.clear_last_quest(uid)
+    await message.reply("🧹 Quest log cleared. Use /quest to start fresh chaos.")
 
 @dp.message(Command("quest"))
 async def cmd_quest(message: Message):
