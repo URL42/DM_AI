@@ -18,8 +18,8 @@ from prompts import load_persona, build_system_prompt, build_user_prompt
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 DB_PATH = os.getenv("DB_PATH", "./dm_oracle.db")
 
 TIMEZONE = os.getenv("TIMEZONE", "America/Los_Angeles")
@@ -36,7 +36,24 @@ SYSTEM_TEMPERATURE = float(os.getenv("SYSTEM_TEMPERATURE", "0.7"))
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
-client = OpenAI(api_key=OPENAI_API_KEY)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "dolphin-venice:latest")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
+if LLM_PROVIDER not in ("openai", "ollama"):
+    raise ValueError("LLM_PROVIDER must be either 'openai' or 'ollama'")
+
+openai_client = None
+ollama_client = None
+
+if LLM_PROVIDER == "openai":
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+else:
+    import ollama  # lazy import so it is only needed when used
+    ollama_client = ollama.Client(host=OLLAMA_HOST)
+
 db = DB(DB_PATH)
 persona = load_persona("persona_dm.json")
 TZ = ZoneInfo(TIMEZONE)
@@ -95,17 +112,24 @@ def generate_reply(username: str, question: str, memories: list[str], chaos: flo
     user = build_user_prompt(username, question, last_quest)
     temp = clamp(SYSTEM_TEMPERATURE + (chaos - 0.5), 0.2, 1.5)
 
-    resp = client.chat.completions.create(
-        model=MODEL,
-        temperature=temp,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user}
-        ]
-    )
-    content = resp.choices[0].message.content.strip()
-    ptoks = getattr(resp.usage, "prompt_tokens", 0) if resp.usage else 0
-    ctoks = getattr(resp.usage, "completion_tokens", 0) if resp.usage else 0
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user}
+    ]
+
+    if LLM_PROVIDER == "ollama":
+        resp = ollama_client.chat(model=OLLAMA_MODEL, messages=messages, options={"temperature": temp})
+        content = resp["message"]["content"].strip()
+        ptoks = ctoks = 0
+    else:
+        resp = openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            temperature=temp,
+            messages=messages
+        )
+        content = resp.choices[0].message.content.strip()
+        ptoks = getattr(resp.usage, "prompt_tokens", 0) if resp.usage else 0
+        ctoks = getattr(resp.usage, "completion_tokens", 0) if resp.usage else 0
     return content, ptoks, ctoks, temp
 
 def clean_quest_hook(raw: str) -> str:
@@ -133,17 +157,27 @@ def generate_quest_hook(chaos: float):
         "Deliver a brand-new quest hook that hints at a conflict, an unusual locale or relic, and a quirky constraint or twist. "
         "Make it feel like the start of an epic side quest. Stay under 50 words."
     )
-    resp = client.chat.completions.create(
-        model=MODEL,
-        temperature=clamp(SYSTEM_TEMPERATURE + (chaos - 0.5), 0.2, 1.5),
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user}
-        ]
-    )
-    content = resp.choices[0].message.content.strip().replace("\n", " ")
-    ptoks = getattr(resp.usage, "prompt_tokens", 0) if resp.usage else 0
-    ctoks = getattr(resp.usage, "completion_tokens", 0) if resp.usage else 0
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user}
+    ]
+    if LLM_PROVIDER == "ollama":
+        resp = ollama_client.chat(
+            model=OLLAMA_MODEL,
+            messages=messages,
+            options={"temperature": clamp(SYSTEM_TEMPERATURE + (chaos - 0.5), 0.2, 1.5)}
+        )
+        content = resp["message"]["content"].strip().replace("\n", " ")
+        ptoks = ctoks = 0
+    else:
+        resp = openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            temperature=clamp(SYSTEM_TEMPERATURE + (chaos - 0.5), 0.2, 1.5),
+            messages=messages
+        )
+        content = resp.choices[0].message.content.strip().replace("\n", " ")
+        ptoks = getattr(resp.usage, "prompt_tokens", 0) if resp.usage else 0
+        ctoks = getattr(resp.usage, "completion_tokens", 0) if resp.usage else 0
     return clean_quest_hook(content), ptoks, ctoks
 
 def advice_buttons(message_row_id: int) -> InlineKeyboardMarkup:

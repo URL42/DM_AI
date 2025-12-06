@@ -5,3 +5,4 @@ openai>=1.51.0
 aiosqlite>=0.20.0
 pydantic>=2.9.0
 uvicorn>=0.30.0
+ollama>=0.3.0

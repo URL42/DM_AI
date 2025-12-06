@@ -69,6 +69,9 @@ The compose stack mounts a named volume (`dm_oracle_data`) at `/data` so the SQL
 | `TELEGRAM_BOT_TOKEN` | ✅ | — | BotFather token to connect to Telegram. |
 | `OPENAI_API_KEY` | ✅ | — | OpenAI key used by the Chat Completions client. |
 | `OPENAI_MODEL` | ⛔ | `gpt-4o-mini` | Model identifier passed to OpenAI. |
+| `LLM_PROVIDER` | ⛔ | `openai` | Choose `openai` (cloud) or `ollama` (local). |
+| `OLLAMA_MODEL` | ⛔ | `dolphin-venice:latest` | Model name to use when `LLM_PROVIDER=ollama`. |
+| `OLLAMA_HOST` | ⛔ | `http://localhost:11434` | Ollama server URL if not using the default. |
 | `DB_PATH` | ⛔ | `./dm_oracle.db` | SQLite database location. |
 | `BOT_NAME` | ⛔ | `Dungeon AI Bot` | Printed on startup. |
 | `TIMEZONE` | ⛔ | `America/Los_Angeles` | Used for chaos reset and report scheduling. |
