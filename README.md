@@ -10,7 +10,7 @@ Dungeon Crawler Carl-inspired chaos, theatrical narration, and surprisingly prac
 - **Achievement spam** with sarcastic omniscient narration driven by `persona_dm.json`.
 - **Sound cues** for key events: new quests and achievement boxes can play local MP3s.
 - **Inline feedback** (👍/👎) logged to SQLite for later review.
-- Works in **direct messages or groups**; in groups the bot only replies to commands or mentions.
+- Works in **direct messages or groups**; in groups the bot only replies to commands or mentions (with allowlist + rate limiting available).
 - Automated **daily admin DM** summarizing usage, votes, and top adventurers.
 
 ## How it fits together
@@ -63,7 +63,7 @@ The compose stack mounts a named volume (`dm_oracle_data`) at `/data` so the SQL
 - `/stats` – personal interaction + token counts plus today’s chaos level.
 - `/leaderboard` – top users ranked by total interactions.
 - `@BotName <text>` in groups – treated as `/advice`.
-- **Admin**: `/report_now` forces the daily report DM; `/set_chaos <base> <slope> <max>` live-tunes the ramp.
+- **Admin**: `/report_now` forces the daily report DM; `/set_chaos <base> <slope> <max>` live-tunes the ramp; `/health` reports provider + DB table counts.
 
 ## Chaos, memory, and reports
 - **Chaos ramp**: `CHAOS_BASE + CHAOS_SLOPE * interactions_today` (clamped to `CHAOS_MAX`) raises OpenAI temperature and pushes the persona louder.
@@ -89,6 +89,11 @@ The compose stack mounts a named volume (`dm_oracle_data`) at `/data` so the SQL
 | `CHAOS_MAX` | ⛔ | `1.3` | Maximum chaos cap. |
 | `SYSTEM_TEMPERATURE` | ⛔ | `0.7` | Base OpenAI temperature before chaos adjustments. |
 | `MAX_HISTORY_PER_USER` | ⛔ | `5` | Number of recent memories retrieved per user. |
+| `MAX_MEMORIES_PER_USER` | ⛔ | `100` | Max memories stored per user before pruning oldest/low-importance entries. |
+| `ALLOWED_USER_IDS` | ⛔ | — | Comma-separated Telegram user IDs allowed to use the bot (admin always allowed). Empty = open. |
+| `RATE_LIMIT_WINDOW_SEC` | ⛔ | `30` | Rate-limit window in seconds. |
+| `RATE_LIMIT_MAX_REQUESTS` | ⛔ | `5` | Max commands per user within the window before cooldown. |
+| `ACHIEVEMENT_SOUND_COOLDOWN_SEC` | ⛔ | `20` | Minimum seconds between achievement sound sends per chat. |
 
 ✅ = required, ⛔ = optional.
 

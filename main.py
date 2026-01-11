@@ -37,35 +37,33 @@ CHAOS_MAX = float(os.getenv("CHAOS_MAX", "1.3"))
 
 MAX_HISTORY = int(os.getenv("MAX_HISTORY_PER_USER", "5"))
 SYSTEM_TEMPERATURE = float(os.getenv("SYSTEM_TEMPERATURE", "0.7"))
+MAX_MEMORIES_TOTAL = int(os.getenv("MAX_MEMORIES_PER_USER", "100"))
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "30"))
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "5"))
+ACHIEVEMENT_SOUND_COOLDOWN = int(os.getenv("ACHIEVEMENT_SOUND_COOLDOWN_SEC", "20"))
+ALLOWED_USER_IDS = {int(x) for x in os.getenv("ALLOWED_USER_IDS", "").split(",") if x.strip().isdigit()}
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
-<<<<<<< HEAD
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "dolphin-venice:latest")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-
-=======
->>>>>>> d2628bd (Add Ollama provider support and keep sound triggers)
+MAX_MEMORIES_TOTAL = int(os.getenv("MAX_MEMORIES_PER_USER", "100"))
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "30"))
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "5"))
+ACHIEVEMENT_SOUND_COOLDOWN = int(os.getenv("ACHIEVEMENT_SOUND_COOLDOWN_SEC", "20"))
+ALLOWED_USER_IDS = {int(x) for x in os.getenv("ALLOWED_USER_IDS", "").split(",") if x.strip().isdigit()}
 if LLM_PROVIDER not in ("openai", "ollama"):
     raise ValueError("LLM_PROVIDER must be either 'openai' or 'ollama'")
 
 openai_client = None
 ollama_client = None
-<<<<<<< HEAD
-
-=======
->>>>>>> d2628bd (Add Ollama provider support and keep sound triggers)
 if LLM_PROVIDER == "openai":
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 else:
-<<<<<<< HEAD
-    import ollama  # lazy import so it is only needed when used
-=======
     import ollama  # Only needed when using the local provider
->>>>>>> d2628bd (Add Ollama provider support and keep sound triggers)
     ollama_client = ollama.Client(host=OLLAMA_HOST)
 
 db = DB(DB_PATH)
@@ -87,6 +85,10 @@ ACHIEVEMENT_BOX_RE = re.compile(
     r"🏆\s*ACHIEVEMENT UNLOCKED:[\s\S]*?(?:Reward:[^\n]*)(?:\n|$)", re.IGNORECASE
 )
 
+RECENT_QUEST_HOOKS: list[str] = []
+RATE_BUCKETS: dict[int, list[float]] = {}
+LAST_ACHIEVEMENT_SOUND: dict[int, float] = {}
+
 async def send_sound(kind: str, chat_id: int, caption: Optional[str] = None):
     path = SOUNDS.get(kind)
     if not path or not path.is_file():
@@ -96,6 +98,30 @@ async def send_sound(kind: str, chat_id: int, caption: Optional[str] = None):
     except Exception:
         # Sound should not block the primary message; ignore playback issues.
         pass
+
+def user_allowed(user_id: int) -> bool:
+    if user_id == ADMIN_USER_ID:
+        return True
+    return not ALLOWED_USER_IDS or user_id in ALLOWED_USER_IDS
+
+def check_rate_limit(user_id: int, now_ts: float) -> bool:
+    bucket = RATE_BUCKETS.setdefault(user_id, [])
+    cutoff = now_ts - RATE_LIMIT_WINDOW
+    bucket[:] = [t for t in bucket if t >= cutoff]
+    if len(bucket) >= RATE_LIMIT_MAX:
+        return False
+    bucket.append(now_ts)
+    return True
+
+async def guard_access(message: Message) -> bool:
+    uid = message.from_user.id
+    if not user_allowed(uid):
+        await message.reply("Access restricted. Ask the admin to be added to the allowlist.")
+        return False
+    if not check_rate_limit(uid, time.time()):
+        await message.reply("⏳ Cooldown — too many requests too quickly. Try again in a moment.")
+        return False
+    return True
 
 def local_day_key(ts: Optional[int] = None) -> str:
     dt = datetime.fromtimestamp(ts or time.time(), TZ)
@@ -111,6 +137,18 @@ def local_day_bounds(day: Optional[str] = None):
 def clamp(x, a, b): return max(a, min(b, x))
 def compute_chaos(today_interactions: int) -> float:
     return clamp(CHAOS_BASE + CHAOS_SLOPE * today_interactions, 0.2, CHAOS_MAX)
+
+def quest_recently_used(hook: str) -> bool:
+    key = hook.lower().strip()
+    return key in RECENT_QUEST_HOOKS
+
+def remember_quest(hook: str):
+    key = hook.lower().strip()
+    if not key:
+        return
+    RECENT_QUEST_HOOKS.append(key)
+    if len(RECENT_QUEST_HOOKS) > 20:
+        RECENT_QUEST_HOOKS.pop(0)
 
 def is_group(msg: Message) -> bool:
     return msg.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP)
@@ -228,6 +266,8 @@ WELCOME_TEXT = (
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
+    if not await guard_access(message):
+        return
     now = int(time.time())
     await db.upsert_user(message.from_user.id, message.from_user.username, now)
     await message.reply(WELCOME_TEXT, parse_mode="Markdown")
@@ -238,6 +278,8 @@ async def cmd_advice(message: Message):
 
 @dp.message(Command("stop"))
 async def cmd_stop(message: Message):
+    if not await guard_access(message):
+        return
     now = int(time.time())
     uid = message.from_user.id
     uname = message.from_user.username or "adventurer"
@@ -248,6 +290,8 @@ async def cmd_stop(message: Message):
 
 @dp.message(Command("quest"))
 async def cmd_quest(message: Message):
+    if not await guard_access(message):
+        return
     now = int(time.time())
     uid = message.from_user.id
     uname = message.from_user.username or "adventurer"
@@ -267,11 +311,26 @@ async def cmd_quest(message: Message):
     if not hook:
         hook = random.choice(QUEST_FALLBACKS)
     hook = clean_quest_hook(hook)
+    attempts = 0
+    while hook and quest_recently_used(hook) and attempts < 2:
+        attempts += 1
+        try:
+            hook, ptoks, ctoks = await asyncio.to_thread(generate_quest_hook, chaos)
+            hook = clean_quest_hook(hook)
+        except Exception:
+            hook = ""
+            break
+    if not hook:
+        # Ensure fallback isn't a duplicate either
+        fallback_options = [q for q in QUEST_FALLBACKS if not quest_recently_used(q)]
+        hook = random.choice(fallback_options or QUEST_FALLBACKS)
+    remember_quest(hook)
 
     # Store as active quest for user, and as memory for callbacks
     await db.delete_memories_with_prefix(uid, "Active quest:")
     await db.set_last_quest(uid, now, hook)
     await db.add_memory(uid, now, f"Active quest: {hook}", importance=3)
+    await db.prune_memories(uid, keep=MAX_MEMORIES_TOTAL)
 
     await db.add_message(uid, now, "quest", ptoks, ctoks, chat_id=message.chat.id)
     await message.reply(
@@ -306,6 +365,8 @@ def roll_flavor(rolls: list[int], faces: int) -> str:
 
 @dp.message(Command("roll"))
 async def cmd_roll(message: Message):
+    if not await guard_access(message):
+        return
     now = int(time.time())
     uid = message.from_user.id
     uname = message.from_user.username or "adventurer"
@@ -328,6 +389,8 @@ async def cmd_roll(message: Message):
 
 @dp.message(Command("stats"))
 async def cmd_stats(message: Message):
+    if not await guard_access(message):
+        return
     uid = message.from_user.id
     cnt, tokens = await db.get_stats(uid)
     today = await db.day_snapshot(local_day_key())
@@ -337,6 +400,8 @@ async def cmd_stats(message: Message):
 
 @dp.message(Command("leaderboard"))
 async def cmd_leaderboard(message: Message):
+    if not await guard_access(message):
+        return
     rows = await db.leaderboard(limit=10)
     if not rows:
         await message.reply("No heroes have darkened my doorway yet.")
@@ -364,6 +429,17 @@ async def cmd_set_chaos(message: Message):
     CHAOS_BASE, CHAOS_SLOPE, CHAOS_MAX = map(float, parts[1:])
     await message.reply(f"Chaos tuned. base={CHAOS_BASE}, slope={CHAOS_SLOPE}, max={CHAOS_MAX}")
 
+@dp.message(Command("health"))
+async def cmd_health(message: Message):
+    if message.from_user.id != ADMIN_USER_ID:
+        return
+    counts = await db.table_counts()
+    provider = f"{LLM_PROVIDER} ({OLLAMA_MODEL})" if LLM_PROVIDER == "ollama" else f"{LLM_PROVIDER} ({OPENAI_MODEL})"
+    await message.reply(
+        f"🩺 Health check\nProvider: {provider}\nUsers: {counts['users']} | Messages: {counts['messages']} | Memories: {counts['memories']}",
+        parse_mode="Markdown"
+    )
+
 # ---- Group smart handling & DM nudges ----
 
 @dp.message()
@@ -387,6 +463,8 @@ async def on_message(message: Message):
 # ---- Advice core (links to last quest if present) ----
 
 async def handle_advice(message: Message):
+    if not await guard_access(message):
+        return
     now = int(time.time())
     uid = message.from_user.id
     uname = message.from_user.username or "adventurer"
@@ -423,6 +501,7 @@ async def handle_advice(message: Message):
     if len(user_question) > 80:
         snippet = re.sub(r"\s+", " ", user_question)[:180]
         await db.add_memory(uid, now, snippet, importance=2)
+        await db.prune_memories(uid, keep=MAX_MEMORIES_TOTAL)
 
     await db.set_alignment(uid, infer_alignment(user_question))
 
@@ -432,7 +511,11 @@ async def handle_advice(message: Message):
         parse_mode="Markdown"
     )
     if ACHIEVEMENT_BOX_RE.search(reply):
-        await send_sound("achievement", message.chat.id, caption="Achievement unlocked")
+        now_ts = time.time()
+        last_played = LAST_ACHIEVEMENT_SOUND.get(message.chat.id, 0)
+        if now_ts - last_played >= ACHIEVEMENT_SOUND_COOLDOWN:
+            LAST_ACHIEVEMENT_SOUND[message.chat.id] = now_ts
+            await send_sound("achievement", message.chat.id, caption="Achievement unlocked")
 
 # ---- Rate my advice ----
 

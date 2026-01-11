@@ -206,3 +206,29 @@ class DB:
         async with aiosqlite.connect(self.path) as db:
             await db.execute("DELETE FROM user_state WHERE user_id=? AND key='last_quest'", (user_id,))
             await db.commit()
+
+    # -------- maintenance helpers --------
+    async def prune_memories(self, user_id: int, keep: int = 100):
+        """Keep only the newest/most important `keep` memories for a user."""
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("""
+                DELETE FROM memories
+                WHERE user_id = ?
+                  AND id NOT IN (
+                    SELECT id FROM memories
+                    WHERE user_id = ?
+                    ORDER BY importance DESC, ts DESC
+                    LIMIT ?
+                  )
+            """, (user_id, user_id, keep))
+            await db.commit()
+
+    async def table_counts(self) -> Dict[str, int]:
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute("SELECT COUNT(*) FROM users")
+            users = int((await cur.fetchone())[0])
+            cur = await db.execute("SELECT COUNT(*) FROM messages")
+            msgs = int((await cur.fetchone())[0])
+            cur = await db.execute("SELECT COUNT(*) FROM memories")
+            mems = int((await cur.fetchone())[0])
+            return {"users": users, "messages": msgs, "memories": mems}
