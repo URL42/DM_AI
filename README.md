@@ -1,11 +1,12 @@
 # Dungeon AI Bot
 
-Carl-inspired chaos, theatrical narration, and surprisingly practical advice — all wrapped in a Telegram bot that remembers your party’s misadventures and ramps up the drama the more you poke it.
+Dungeon Crawler Carl-inspired chaos, theatrical narration, and surprisingly practical advice — all wrapped in a Telegram bot that remembers your party’s misadventures and ramps up the drama the more you poke it.
 
 ## Why you might want this
 - Daily **chaos ramp** that cranks temperature & tone as interactions pile up, then resets at local dawn.
 - **Quest continuity**: `/quest` seeds a hook; `/advice` remembers and builds on it.
 - **Achievement spam** with sarcastic omniscient narration driven by `persona_dm.json`.
+- **Sound cues** for key events: new quests and achievement boxes can play local MP3s.
 - **Inline feedback** (👍/👎) logged to SQLite for later review.
 - Works in **direct messages or groups**; in groups the bot only replies to commands or mentions.
 - Automated **daily admin DM** summarizing usage, votes, and top adventurers.
@@ -36,6 +37,10 @@ uv run python main.py
 ```
 
 The process prints `Dungeon AI Bot is listening...` once polling starts. Stop with `Ctrl+C`.
+
+### Sound cues (optional)
+- Drop MP3s in `sounds/`. By default `new_quest.mp3` plays after `/quest`, and `new_achievement.mp3` plays when a reply includes an ACHIEVEMENT box.
+- If a file is missing or playback fails, the bot still sends the text message.
 
 ## Docker
 ```bash

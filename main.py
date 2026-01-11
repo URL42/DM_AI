@@ -1,12 +1,13 @@
 # main.py
 import os, time, random, re, asyncio
+from pathlib import Path
 from dotenv import load_dotenv
 from typing import Optional
 from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, FSInputFile
 from aiogram.filters import Command
 from aiogram.enums import ChatType
 
@@ -57,6 +58,11 @@ else:
 db = DB(DB_PATH)
 persona = load_persona("persona_dm.json")
 TZ = ZoneInfo(TIMEZONE)
+SOUND_DIR = Path(__file__).parent / "sounds"
+SOUNDS = {
+    "achievement": SOUND_DIR / "new_achievement.mp3",
+    "quest": SOUND_DIR / "new_quest.mp3",
+}
 
 QUEST_FALLBACKS = [
     "A suspicious merchant offers a map to a sunken archive guarded by silent bells.",
@@ -67,6 +73,16 @@ QUEST_FALLBACKS = [
 ACHIEVEMENT_BOX_RE = re.compile(
     r"🏆\s*ACHIEVEMENT UNLOCKED:[\s\S]*?(?:Reward:[^\n]*)(?:\n|$)", re.IGNORECASE
 )
+
+async def send_sound(kind: str, chat_id: int, caption: Optional[str] = None):
+    path = SOUNDS.get(kind)
+    if not path or not path.is_file():
+        return
+    try:
+        await bot.send_audio(chat_id, FSInputFile(path), caption=caption)
+    except Exception:
+        # Sound should not block the primary message; ignore playback issues.
+        pass
 
 def local_day_key(ts: Optional[int] = None) -> str:
     dt = datetime.fromtimestamp(ts or time.time(), TZ)
@@ -249,6 +265,7 @@ async def cmd_quest(message: Message):
         f"📜 *Quest Hook*\n{hook}\n\n_Use /advice to plot your approach — I’ll remember this quest._",
         parse_mode="Markdown"
     )
+    await send_sound("quest", message.chat.id, caption="New quest posted")
 
 def roll_flavor(rolls: list[int], faces: int) -> str:
     n = len(rolls)
@@ -401,6 +418,8 @@ async def handle_advice(message: Message):
         reply_markup=advice_buttons(message_row_id=msg_row_id),
         parse_mode="Markdown"
     )
+    if ACHIEVEMENT_BOX_RE.search(reply):
+        await send_sound("achievement", message.chat.id, caption="Achievement unlocked")
 
 # ---- Rate my advice ----
 
