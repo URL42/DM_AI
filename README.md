@@ -1,5 +1,7 @@
 # Dungeon AI Bot
 
+![Dungeon AI Bot hero art](dmk.png)
+
 Dungeon Crawler Carl-inspired chaos, theatrical narration, and surprisingly practical advice — all wrapped in a Telegram bot that remembers your party’s misadventures and ramps up the drama the more you poke it.
 
 ## Why you might want this
