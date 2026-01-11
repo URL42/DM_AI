@@ -22,6 +22,9 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 DB_PATH = os.getenv("DB_PATH", "./dm_oracle.db")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "dolphin-venice:latest")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
 TIMEZONE = os.getenv("TIMEZONE", "America/Los_Angeles")
 BOT_NAME = os.getenv("BOT_NAME", "Dungeon AI Bot")
@@ -37,22 +40,32 @@ SYSTEM_TEMPERATURE = float(os.getenv("SYSTEM_TEMPERATURE", "0.7"))
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
+<<<<<<< HEAD
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "dolphin-venice:latest")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
+=======
+>>>>>>> d2628bd (Add Ollama provider support and keep sound triggers)
 if LLM_PROVIDER not in ("openai", "ollama"):
     raise ValueError("LLM_PROVIDER must be either 'openai' or 'ollama'")
 
 openai_client = None
 ollama_client = None
+<<<<<<< HEAD
 
+=======
+>>>>>>> d2628bd (Add Ollama provider support and keep sound triggers)
 if LLM_PROVIDER == "openai":
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 else:
+<<<<<<< HEAD
     import ollama  # lazy import so it is only needed when used
+=======
+    import ollama  # Only needed when using the local provider
+>>>>>>> d2628bd (Add Ollama provider support and keep sound triggers)
     ollama_client = ollama.Client(host=OLLAMA_HOST)
 
 db = DB(DB_PATH)
