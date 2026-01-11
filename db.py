@@ -207,6 +207,26 @@ class DB:
             await db.execute("DELETE FROM user_state WHERE user_id=? AND key='last_quest'", (user_id,))
             await db.commit()
 
+    async def set_thread(self, user_id: int, ts: int, data: str):
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("""
+                INSERT INTO user_state(user_id, key, value, ts)
+                VALUES (?, 'thread', ?, ?)
+                ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value, ts=excluded.ts
+            """, (user_id, data, ts))
+            await db.commit()
+
+    async def get_thread(self, user_id: int) -> Optional[str]:
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute("SELECT value FROM user_state WHERE user_id=? AND key='thread'", (user_id,))
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+    async def clear_thread(self, user_id: int):
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("DELETE FROM user_state WHERE user_id=? AND key='thread'", (user_id,))
+            await db.commit()
+
     # -------- maintenance helpers --------
     async def prune_memories(self, user_id: int, keep: int = 100):
         """Keep only the newest/most important `keep` memories for a user."""

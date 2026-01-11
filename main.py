@@ -1,5 +1,5 @@
 # main.py
-import os, time, random, re, asyncio
+import os, time, random, re, asyncio, json
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import Optional
@@ -88,6 +88,7 @@ ACHIEVEMENT_BOX_RE = re.compile(
 RECENT_QUEST_HOOKS: list[str] = []
 RATE_BUCKETS: dict[int, list[float]] = {}
 LAST_ACHIEVEMENT_SOUND: dict[int, float] = {}
+THREAD_MAX = 3
 
 async def send_sound(kind: str, chat_id: int, caption: Optional[str] = None):
     path = SOUNDS.get(kind)
@@ -149,6 +150,29 @@ def remember_quest(hook: str):
     RECENT_QUEST_HOOKS.append(key)
     if len(RECENT_QUEST_HOOKS) > 20:
         RECENT_QUEST_HOOKS.pop(0)
+
+def load_thread(raw: Optional[str]) -> list[dict]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return [d for d in data if isinstance(d, dict) and "user" in d and "bot" in d]
+    except Exception:
+        return []
+    return []
+
+def trim_thread(exchanges: list[dict]) -> list[dict]:
+    return exchanges[-THREAD_MAX:] if len(exchanges) > THREAD_MAX else exchanges
+
+def build_thread_prompt(exchanges: list[dict], new_text: str, last_quest: Optional[str]) -> str:
+    blocks = []
+    for ex in exchanges:
+        blocks.append(f"User: {ex['user']}\nDungeon AI: {ex['bot']}")
+    thread_txt = "\n\n".join(blocks)
+    quest_note = f"\nConsider current quest: {last_quest}" if last_quest else ""
+    user_line = new_text or "Continue the guidance on this same topic."
+    return f"Continue this conversation using the prior exchanges.\n{thread_txt}\n\nNew request: {user_line}{quest_note}"
 
 def is_group(msg: Message) -> bool:
     return msg.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP)
@@ -286,6 +310,7 @@ async def cmd_stop(message: Message):
     await db.upsert_user(uid, uname, now)
     await db.delete_memories_with_prefix(uid, "Active quest:")
     await db.clear_last_quest(uid)
+    await db.clear_thread(uid)
     await message.reply("🧹 Quest log cleared. Use /quest to start fresh chaos.")
 
 @dp.message(Command("quest"))
@@ -331,6 +356,7 @@ async def cmd_quest(message: Message):
     await db.set_last_quest(uid, now, hook)
     await db.add_memory(uid, now, f"Active quest: {hook}", importance=3)
     await db.prune_memories(uid, keep=MAX_MEMORIES_TOTAL)
+    await db.clear_thread(uid)
 
     await db.add_message(uid, now, "quest", ptoks, ctoks, chat_id=message.chat.id)
     await message.reply(
@@ -386,6 +412,7 @@ async def cmd_roll(message: Message):
     flavor = roll_flavor(rolls, faces)
     await db.add_message(uid, now, "roll", 0, 0, chat_id=message.chat.id)
     await message.reply(f"🎲 Rolls: {rolls} → *{total}*\n{flavor}", parse_mode="Markdown")
+    await db.clear_thread(uid)
 
 @dp.message(Command("stats"))
 async def cmd_stats(message: Message):
@@ -516,6 +543,70 @@ async def handle_advice(message: Message):
         if now_ts - last_played >= ACHIEVEMENT_SOUND_COOLDOWN:
             LAST_ACHIEVEMENT_SOUND[message.chat.id] = now_ts
             await send_sound("achievement", message.chat.id, caption="Achievement unlocked")
+    thread = trim_thread([{"user": user_question, "bot": reply}])
+    await db.set_thread(uid, now, json.dumps(thread))
+
+@dp.message(Command("continue"))
+async def cmd_continue(message: Message):
+    if not await guard_access(message):
+        return
+    now = int(time.time())
+    uid = message.from_user.id
+    uname = message.from_user.username or "adventurer"
+    await db.upsert_user(uid, uname, now)
+    day = local_day_key(now)
+    await db.inc_counter(day, "advice")
+
+    raw_thread = await db.get_thread(uid)
+    thread = trim_thread(load_thread(raw_thread))
+    if not thread:
+        await message.reply("No active thread. Start fresh with /advice first.")
+        return
+
+    parts = message.text.split(maxsplit=1)
+    user_text = parts[1].strip() if len(parts) > 1 else ""
+
+    memories_raw = await db.get_top_memories(uid, MAX_HISTORY)
+    memories = [cleaned for cleaned in map(clean_quest_hook, memories_raw) if cleaned]
+    today_interactions = await get_today_interactions()
+    chaos = compute_chaos(today_interactions)
+    last_quest = await db.get_last_quest(uid)
+    if last_quest:
+        last_quest = clean_quest_hook(last_quest)
+
+    continue_prompt = build_thread_prompt(thread, user_text, last_quest)
+
+    try:
+        reply, ptoks, ctoks, temp_used = await asyncio.to_thread(
+            generate_reply, uname, continue_prompt, memories, chaos, last_quest
+        )
+    except Exception as e:
+        await message.reply(f"🛑 The Oracle coughed on a dust mote: {e}")
+        return
+
+    msg_row_id = await db.add_message(uid, now, "advice", ptoks, ctoks, chat_id=message.chat.id)
+
+    if len(user_text) > 80:
+        snippet = re.sub(r"\s+", " ", user_text)[:180]
+        await db.add_memory(uid, now, snippet, importance=2)
+        await db.prune_memories(uid, keep=MAX_MEMORIES_TOTAL)
+
+    await db.set_alignment(uid, infer_alignment(user_text or continue_prompt))
+
+    await message.reply(
+        f"{reply}\n\n_Chaos {chaos:.2f} • Temp {temp_used:.2f}_",
+        reply_markup=advice_buttons(message_row_id=msg_row_id),
+        parse_mode="Markdown"
+    )
+    if ACHIEVEMENT_BOX_RE.search(reply):
+        now_ts = time.time()
+        last_played = LAST_ACHIEVEMENT_SOUND.get(message.chat.id, 0)
+        if now_ts - last_played >= ACHIEVEMENT_SOUND_COOLDOWN:
+            LAST_ACHIEVEMENT_SOUND[message.chat.id] = now_ts
+            await send_sound("achievement", message.chat.id, caption="Achievement unlocked")
+
+    thread.append({"user": user_text or continue_prompt, "bot": reply})
+    await db.set_thread(uid, now, json.dumps(trim_thread(thread)))
 
 # ---- Rate my advice ----
 

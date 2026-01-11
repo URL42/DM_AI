@@ -7,6 +7,7 @@ Dungeon Crawler Carl-inspired chaos, theatrical narration, and surprisingly prac
 ## Why you might want this
 - Daily **chaos ramp** that cranks temperature & tone as interactions pile up, then resets at local dawn.
 - **Quest continuity**: `/quest` seeds a hook; `/advice` remembers and builds on it.
+- **Threaded follow-ups**: `/continue` extends your last advice thread (capped to the last 3 exchanges).
 - **Achievement spam** with sarcastic omniscient narration driven by `persona_dm.json`.
 - **Sound cues** for key events: new quests and achievement boxes can play local MP3s.
 - **Inline feedback** (👍/👎) logged to SQLite for later review.
@@ -57,6 +58,7 @@ The compose stack mounts a named volume (`dm_oracle_data`) at `/data` so the SQL
 
 ## Command reference
 - `/advice <dilemma>` – primary interaction; bot replies with achievement box, strategy, and snark.
+- `/continue [text]` – extend your last advice thread (keeps up to 3 exchanges).
 - `/quest` – generates a fresh quest hook via the LLM and stores it as active context for later advice.
 - `/stop` – clears your current quest context if you want to start over.
 - `/roll [NdM]` – dice roller with narrative flavor (supports up to 20 dice and 1000 faces).
@@ -64,6 +66,7 @@ The compose stack mounts a named volume (`dm_oracle_data`) at `/data` so the SQL
 - `/leaderboard` – top users ranked by total interactions.
 - `@BotName <text>` in groups – treated as `/advice`.
 - **Admin**: `/report_now` forces the daily report DM; `/set_chaos <base> <slope> <max>` live-tunes the ramp; `/health` reports provider + DB table counts.
+- **Bot menu**: set slash commands via BotFather (`/setcommands`) to surface the menu in clients (e.g., start, advice, continue, quest, stop, roll, stats, leaderboard, admin commands).
 
 ## Chaos, memory, and reports
 - **Chaos ramp**: `CHAOS_BASE + CHAOS_SLOPE * interactions_today` (clamped to `CHAOS_MAX`) raises OpenAI temperature and pushes the persona louder.
@@ -94,6 +97,7 @@ The compose stack mounts a named volume (`dm_oracle_data`) at `/data` so the SQL
 | `RATE_LIMIT_WINDOW_SEC` | ⛔ | `30` | Rate-limit window in seconds. |
 | `RATE_LIMIT_MAX_REQUESTS` | ⛔ | `5` | Max commands per user within the window before cooldown. |
 | `ACHIEVEMENT_SOUND_COOLDOWN_SEC` | ⛔ | `20` | Minimum seconds between achievement sound sends per chat. |
+| `ALLOWED_USER_IDS` | ⛔ | — | Comma-separated Telegram user IDs allowed to use the bot (example: `12345,67890`); empty = open. |
 
 ✅ = required, ⛔ = optional.
 
