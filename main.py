@@ -42,6 +42,8 @@ RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "30"))
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "5"))
 ACHIEVEMENT_SOUND_COOLDOWN = int(os.getenv("ACHIEVEMENT_SOUND_COOLDOWN_SEC", "20"))
 ALLOWED_USER_IDS = {int(x) for x in os.getenv("ALLOWED_USER_IDS", "").split(",") if x.strip().isdigit()}
+def log_debug(*parts):
+    print("[bot]", *parts, flush=True)
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
@@ -545,10 +547,13 @@ async def handle_advice(message: Message):
             await send_sound("achievement", message.chat.id, caption="Achievement unlocked")
     thread = trim_thread([{"user": user_question, "bot": reply}])
     await db.set_thread(uid, now, json.dumps(thread))
+    log_debug(f"/advice stored thread len={len(thread)} for uid={uid}")
 
 @dp.message(Command("continue"))
 async def cmd_continue(message: Message):
+    log_debug("/continue invoked")
     if not await guard_access(message):
+        log_debug("/continue blocked by guard")
         return
     now = int(time.time())
     uid = message.from_user.id
@@ -559,8 +564,10 @@ async def cmd_continue(message: Message):
 
     raw_thread = await db.get_thread(uid)
     thread = trim_thread(load_thread(raw_thread))
+    log_debug(f"/continue thread len={len(thread)}")
     if not thread:
         await message.reply("No active thread. Start fresh with /advice first.")
+        log_debug("/continue no thread stored")
         return
 
     parts = message.text.split(maxsplit=1)
@@ -582,6 +589,7 @@ async def cmd_continue(message: Message):
         )
     except Exception as e:
         await message.reply(f"🛑 The Oracle coughed on a dust mote: {e}")
+        log_debug(f"/continue error {e}")
         return
 
     msg_row_id = await db.add_message(uid, now, "advice", ptoks, ctoks, chat_id=message.chat.id)
@@ -607,6 +615,7 @@ async def cmd_continue(message: Message):
 
     thread.append({"user": user_text or continue_prompt, "bot": reply})
     await db.set_thread(uid, now, json.dumps(trim_thread(thread)))
+    log_debug(f"/continue stored thread len={len(thread)} for uid={uid}")
 
 # ---- Rate my advice ----
 
