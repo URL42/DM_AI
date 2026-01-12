@@ -9,6 +9,12 @@ services:
     volumes:
       - dm_oracle_data:/data
     command: ["python", "main.py"]
+    healthcheck:
+      test: ["CMD-SHELL", "python - <<'PY'\nimport sqlite3, pathlib\npath = pathlib.Path('/data/dm_oracle.db')\nprint('ok' if path.exists() else 'missing')\nPY"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   dm_oracle_data:
