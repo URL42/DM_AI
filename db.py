@@ -135,6 +135,25 @@ class DB:
             """, (limit,))
             return await cur.fetchall()
 
+    async def leaderboard_since(self, ts_start: int, ts_end: int | None = None, limit: int = 10):
+        params = [ts_start]
+        time_clause = "AND m.ts >= ?"
+        if ts_end is not None:
+            time_clause = "AND m.ts >= ? AND m.ts < ?"
+            params.append(ts_end)
+        params.append(limit)
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute(f"""
+              SELECT u.username, COUNT(m.id) as cnt
+              FROM users u
+              LEFT JOIN messages m ON m.user_id = u.user_id
+              WHERE 1=1 {time_clause}
+              GROUP BY u.user_id
+              ORDER BY cnt DESC
+              LIMIT ?
+            """, params)
+            return await cur.fetchall()
+
     async def inc_counter(self, day: str, kind: str):
         async with aiosqlite.connect(self.path) as db:
             await db.execute("""

@@ -436,7 +436,8 @@ async def cmd_stats(message: Message):
 async def cmd_leaderboard(message: Message):
     if not await guard_access(message):
         return
-    rows = await db.leaderboard(limit=10)
+    now = int(time.time())
+    rows = await db.leaderboard_since(now - 86400, now, limit=10)
     if not rows:
         await message.reply("No heroes have darkened my doorway yet.")
         return
@@ -646,7 +647,7 @@ async def send_daily_report():
     unique_users = await db.compute_unique_users_today(d0, d1)
     await db.set_unique_users(day, unique_users)
     snap = await db.day_snapshot(day) or {}
-    rows = await db.leaderboard(limit=5)
+    rows = await db.leaderboard_since(d0, d1, limit=5)
     lb = "\n".join([f"{i+1}. @{u or 'unknown'} — {c}" for i,(u,c) in enumerate(rows)]) or "—"
 
     text = (
