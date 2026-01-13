@@ -471,8 +471,11 @@ async def cmd_health(message: Message):
 
 # ---- Group smart handling & DM nudges ----
 
-@dp.message()
+@dp.message(flags={"block": False})
 async def on_message(message: Message):
+    # Ignore other commands; let specific handlers process them
+    if message.text and message.text.startswith("/"):
+        return
     if is_group(message):
         me = await bot.get_me()
         if not (message.text and (message.text.startswith("/") or bot_is_mentioned(message, me))):
