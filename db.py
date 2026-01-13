@@ -144,7 +144,7 @@ class DB:
         params.append(limit)
         async with aiosqlite.connect(self.path) as db:
             cur = await db.execute(f"""
-              SELECT u.username, COUNT(m.id) as cnt
+              SELECT m.user_id, u.username, COUNT(m.id) as cnt
               FROM users u
               LEFT JOIN messages m ON m.user_id = u.user_id
               WHERE 1=1 {time_clause}

@@ -98,6 +98,7 @@ The compose stack mounts a named volume (`dm_oracle_data`) at `/data` so the SQL
 | `RATE_LIMIT_MAX_REQUESTS` | ⛔ | `5` | Max commands per user within the window before cooldown. |
 | `ACHIEVEMENT_SOUND_COOLDOWN_SEC` | ⛔ | `20` | Minimum seconds between achievement sound sends per chat. |
 | `ALLOWED_USER_IDS` | ⛔ | — | Comma-separated Telegram user IDs allowed to use the bot (example: `12345,67890`); empty = open. |
+| `USER_LABELS` | ⛔ | — | Optional map of `id:name` pairs, comma-separated (example: `12345:alice,67890:gm`). Used for leaderboard display instead of raw IDs. |
 
 ✅ = required, ⛔ = optional.
 

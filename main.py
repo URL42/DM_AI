@@ -2,7 +2,7 @@
 import os, time, random, re, asyncio, json
 from pathlib import Path
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, Dict
 from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta
 
@@ -42,6 +42,19 @@ RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "30"))
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "5"))
 ACHIEVEMENT_SOUND_COOLDOWN = int(os.getenv("ACHIEVEMENT_SOUND_COOLDOWN_SEC", "20"))
 ALLOWED_USER_IDS = {int(x) for x in os.getenv("ALLOWED_USER_IDS", "").split(",") if x.strip().isdigit()}
+def parse_user_labels(raw: str) -> Dict[int, str]:
+    labels = {}
+    for part in raw.split(","):
+        if ":" not in part:
+            continue
+        k, v = part.split(":", 1)
+        k = k.strip()
+        v = v.strip()
+        if k.isdigit() and v:
+            labels[int(k)] = v
+    return labels
+
+USER_LABELS = parse_user_labels(os.getenv("USER_LABELS", ""))
 def log_debug(*parts):
     print("[bot]", *parts, flush=True)
 
@@ -69,6 +82,8 @@ else:
     ollama_client = ollama.Client(host=OLLAMA_HOST)
 
 log_debug(f"Startup allowlist={ALLOWED_USER_IDS} admin={ADMIN_USER_ID} provider={LLM_PROVIDER}")
+if USER_LABELS:
+    log_debug(f"User labels loaded: {USER_LABELS}")
 
 db = DB(DB_PATH)
 persona = load_persona("persona_dm.json")
@@ -108,6 +123,13 @@ def user_allowed(user_id: int) -> bool:
     if user_id == ADMIN_USER_ID:
         return True
     return not ALLOWED_USER_IDS or user_id in ALLOWED_USER_IDS
+
+def display_user(user_id: int, username: Optional[str]) -> str:
+    if user_id in USER_LABELS:
+        return USER_LABELS[user_id]
+    if username:
+        return f"@{username}"
+    return "unknown"
 
 def check_rate_limit(user_id: int, now_ts: float) -> bool:
     bucket = RATE_BUCKETS.setdefault(user_id, [])
@@ -441,7 +463,10 @@ async def cmd_leaderboard(message: Message):
     if not rows:
         await message.reply("No heroes have darkened my doorway yet.")
         return
-    lines = [f"{i+1}. @{u or 'unknown'} — {c} rites" for i, (u, c) in enumerate(rows)]
+    lines = []
+    for i, (uid, username, cnt) in enumerate(rows):
+        label = display_user(uid, username)
+        lines.append(f"{i+1}. {label} — {cnt} rites")
     await message.reply("🏆 *Leaderboard*\n" + "\n".join(lines), parse_mode="Markdown")
 
 # ---- Admin: on-demand report & chaos tuning ----
@@ -648,7 +673,10 @@ async def send_daily_report():
     await db.set_unique_users(day, unique_users)
     snap = await db.day_snapshot(day) or {}
     rows = await db.leaderboard_since(d0, d1, limit=5)
-    lb = "\n".join([f"{i+1}. @{u or 'unknown'} — {c}" for i,(u,c) in enumerate(rows)]) or "—"
+    lb_parts = []
+    for i, (uid, username, cnt) in enumerate(rows):
+        lb_parts.append(f"{i+1}. {display_user(uid, username)} — {cnt}")
+    lb = "\n".join(lb_parts) or "—"
 
     text = (
         f"📮 *Dungeon AI Daily Report* — {day}\n"
