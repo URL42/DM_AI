@@ -68,6 +68,8 @@ else:
     import ollama  # Only needed when using the local provider
     ollama_client = ollama.Client(host=OLLAMA_HOST)
 
+log_debug(f"Startup allowlist={ALLOWED_USER_IDS} admin={ADMIN_USER_ID} provider={LLM_PROVIDER}")
+
 db = DB(DB_PATH)
 persona = load_persona("persona_dm.json")
 TZ = ZoneInfo(TIMEZONE)
@@ -119,11 +121,14 @@ def check_rate_limit(user_id: int, now_ts: float) -> bool:
 async def guard_access(message: Message) -> bool:
     uid = message.from_user.id
     if not user_allowed(uid):
+        log_debug(f"access denied uid={uid}")
         await message.reply("Access restricted. Ask the admin to be added to the allowlist.")
         return False
     if not check_rate_limit(uid, time.time()):
+        log_debug(f"rate limited uid={uid}")
         await message.reply("⏳ Cooldown — too many requests too quickly. Try again in a moment.")
         return False
+    log_debug(f"access ok uid={uid}")
     return True
 
 def local_day_key(ts: Optional[int] = None) -> str:
